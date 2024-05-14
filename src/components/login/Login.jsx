@@ -1,8 +1,14 @@
 import React, { useState } from "react";
 import "./login.css";
 import { toast } from "react-toastify";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
+import { auth, db } from '../../lib/firebase'
+import { collection, doc, getDocs, query, setDoc, where } from "firebase/firestore";
+import upload from "../../lib/upload";
 
 const Login = () => {
+
+  const [loading, setLoading] = useState(false);
   const [avatar, setAvatar] = useState({
     file: null,
     url: "",
@@ -17,17 +23,68 @@ const Login = () => {
     }
   };
 
-  const handleRegister = e => {
+  const handleRegister = async e => {
     e.preventDefault();
+    setLoading(true)
     const formData = new FormData(e.target)
     const {username, email, password} = Object.fromEntries(formData)
 
-    console.log(username);
+    if (!username || !email || !password) {
+      return toast.warn('Please, enter all inputs')
+    }
+    if (!avatar.file) return toast.warn("Please, uload an avatar")
+
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where("username", '==', username))
+    const querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+      return toast.warn("Select another username")
+    }
+
+    try {
+
+      const res = await createUserWithEmailAndPassword(auth, email, password);
+      const imgUrl = await upload(avatar.file)
+
+      await setDoc(doc(db, "users", res.user.uid), {
+        username,
+        email,
+        avatar: imgUrl,
+        id: res.user.uid,
+        blocked: []
+      })
+
+      await setDoc(doc(db, "userchats", res.user.uid), {
+        chats: []
+      })
+
+      toast.success("Account created. You can login now.")
+      
+    } catch (err) {
+      console.log(err);
+      toast.error(err.message)
+    } finally {
+      setLoading(false)
+    }
     
   }
 
-  const handleLogin = e => {
+  const handleLogin = async e => {
     e.preventDefault();
+    setLoading(true)
+    const formData = new FormData(e.target)
+    const {email, password} = Object.fromEntries(formData)
+
+    try {
+
+      await signInWithEmailAndPassword(auth, email, password)
+
+    } catch (err) {
+      console.log(err);
+      toast.error(err.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -37,7 +94,7 @@ const Login = () => {
         <form onSubmit={handleLogin}>
           <input type="email" name="email" placeholder="Email" />
           <input type="password" name="password" placeholder="Password" />
-          <button>Sign In</button>
+          <button disabled={loading}>{loading ? "Loading" : "Sign In"}</button>
         </form>
       </div>
       <div className="separator"></div>
@@ -58,7 +115,7 @@ const Login = () => {
           <input type="text" name="username" placeholder="User name" />
           <input type="email" name="email" placeholder="Email" />
           <input type="password" name="password" placeholder="Password" />
-          <button>Sign Up</button>
+          <button disabled={loading}>{loading ? "Loading" : "Sign Up"}</button>
         </form>
       </div>
     </div>
